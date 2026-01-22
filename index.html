@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="format-detection" content="telephone=no">
+  <title>极速拖拽拼图游戏</title>
+  <!-- 引入Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 配置Tailwind自定义颜色 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#4361ee',
+            success: '#38b000',
+            warning: '#ffbe0b',
+            light: '#f8f9fa',
+            dark: '#212529',
+            gray: '#6c757d'
+          },
+          boxShadow: {
+            'game': '0 4px 12px rgba(0, 0, 0, 0.1)',
+            'game-hover': '0 6px 16px rgba(0, 0, 0, 0.15)',
+            'piece': '0 3px 8px rgba(0, 0, 0, 0.12)',
+            'modal': '0 8px 24px rgba(0, 0, 0, 0.2)'
+          }
+        }
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .timer-font {
+                font-family: 'Consolas', monospace;
+            }
+            .shake {
+                animation: shake 0.1s linear;
+            }
+            .modal-pop {
+                animation: modalPop 0.2s linear;
+            }
+            /* 新增：禁止flex子元素收缩 */
+            .flex-shrink-0 {
+                flex-shrink: 0;
+            }
+            @keyframes shake {
+                0%, 100% { transform: translate3d(0, 0, 0); }
+                25% { transform: translate3d(-2px, 0, 0); }
+                75% { transform: translate3d(2px, 0, 0); }
+            }
+            @keyframes modalPop {
+                from { opacity: 0; transform: scale(0.95); }
+                to { opacity: 1; transform: scale(1); }
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gradient-to-br from-[#e8f4f8] to-[#f0f8fb] min-h-screen text-dark touch-none">
+  <div class="container mx-auto bg-white p-5 overflow-hidden">
+    <div class="header flex flex-wrap justify-between items-center mb-6 gap-4">
+      <h1 class="text-primary text-[clamp(20px,5vw,28px)] font-semibold relative pb-2">
+        极速拖拽拼图游戏
+        <span class="absolute left-0 bottom-0 w-10 h-[3px] bg-primary"></span>
+      </h1>
+      <div class="game-info flex items-center gap-3 flex-wrap">
+        <select id="difficultySelect"
+          class="difficulty-select px-3 py-1.5 border border-[#e1e5e9] bg-light text-dark outline-none focus:border-primary focus:shadow-[0_0_0_2px_rgba(67,97,238,0.1)] text-sm">
+          <option value="4">4×4 (简单)</option>
+          <option value="5">5×5 (中等)</option>
+          <option value="6">6×6 (困难)</option>
+        </select>
+        <div id="timer"
+          class="timer bg-light px-4 py-2 timer-font font-semibold text-primary text-[clamp(14px,4vw,16px)] min-w-[80px] text-center shadow-[inset_0_1px_3px_rgba(0,0,0,0.05)]">
+          00:00.0</div>
+        <div class="btn-group flex gap-2">
+          <button id="startBtn"
+            class="start-btn px-4 py-2 cursor-pointer text-sm font-medium flex items-center justify-center min-h-[40px] min-w-[80px] bg-primary text-white hover:bg-[#3a56d4] hover:shadow-game-hover hover:-translate-y-0.5 transition-all">开始游戏</button>
+          <button id="resetBtn"
+            class="reset-btn px-4 py-2 cursor-pointer text-sm font-medium flex items-center justify-center min-h-[40px] min-w-[80px] bg-light text-dark hover:bg-[#e9ecef] hover:shadow-game-hover hover:-translate-y-0.5 transition-all hidden">重新开始</button>
+          <button id="hintBtn"
+            class="hint-btn px-4 py-2 cursor-pointer text-sm font-medium flex items-center justify-center min-h-[40px] min-w-[80px] bg-light text-dark hover:bg-[#e9ecef] hover:shadow-game-hover hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
+            disabled>提示</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="puzzleBoard"
+      class="puzzle-board border-2 border-[#e1e5e9] mx-auto mb-6 grid bg-light overflow-hidden shadow-[inset_0_2px_4px_rgba(0,0,0,0.03)]">
+    </div>
+
+    <!-- 父容器增加align-items-center，确保拼图块垂直居中 -->
+    <div id="piecesContainer"
+      class="pieces-container flex flex-nowrap items-center gap-2.5 justify-start mt-5 p-4 bg-light overflow-x-auto">
+    </div>
+  </div>
+
+  <div id="hintOverlay"
+    class="hint-overlay fixed top-0 left-0 w-full h-full bg-black/60 hidden justify-center items-center z-50">
+    <div class="hint-content bg-white p-6 max-w-[90%] text-center">
+      <h3 class="text-lg font-medium mb-2">拼图参考</h3>
+      <p class="text-gray mb-4">这是完整的图片参考！</p>
+      <img
+        src="https://gips1.baidu.com/it/u=2178022794,1740207030&fm=3042&app=3042&f=JPEG&wm=1,baiduai3,0,0,13,9&wmo=5,5&w=1024&h=1024"
+        alt="拼图参考图" id="hintImg" class="hint-img max-w-full my-4 shadow-game">
+      <button id="hintCloseBtn" class="hint-close mt-4 px-4 py-2 bg-primary text-white">知道了</button>
+    </div>
+  </div>
+
+  <div id="completionModal"
+    class="completion-modal fixed top-0 left-0 w-full h-full bg-black/70 hidden justify-center items-center z-40 backdrop-blur-sm">
+    <div class="modal-content bg-white p-8 text-center shadow-modal max-w-[90%] w-[350px] modal-pop">
+      <h2 class="text-success text-[clamp(20px,5vw,24px)] font-medium mb-3">🎉 恭喜完成！</h2>
+      <p class="text-gray mb-5">你成功完成了拼图挑战</p>
+      <div
+        class="time text-[clamp(18px,5vw,22px)] font-semibold text-primary my-[15px] py-3 px-4 bg-light inline-block min-w-[120px]">
+        用时: <span id="completionTime">00:00.0</span></div>
+      <button id="playAgainBtn" class="start-btn px-4 py-2 bg-primary text-white">再玩一次</button>
+    </div>
+  </div>
+
+  <script>
+    // 游戏核心配置
+    const game = {
+      gridSize: 4,
+      pieceCount: 16,
+      isPlaying: false,
+      startTime: null,
+      timerInterval: null,
+      correctPieces: 0,
+      totalBoardSize: 0,
+      boardPieceSize: 0,
+      pieceSize: 0
+    };
+
+    // DOM元素缓存
+    const elements = {
+      puzzleBoard: document.getElementById('puzzleBoard'),
+      piecesContainer: document.getElementById('piecesContainer'),
+      startBtn: document.getElementById('startBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      hintBtn: document.getElementById('hintBtn'),
+      hintOverlay: document.getElementById('hintOverlay'),
+      hintCloseBtn: document.getElementById('hintCloseBtn'),
+      hintImg: document.getElementById('hintImg'),
+      timer: document.getElementById('timer'),
+      completionModal: document.getElementById('completionModal'),
+      completionTime: document.getElementById('completionTime'),
+      playAgainBtn: document.getElementById('playAgainBtn'),
+      difficultySelect: document.getElementById('difficultySelect')
+    };
+
+    // 全局状态管理
+    let puzzlePieces = [];
+    let slotPositions = [];
+    let dragState = {
+      piece: null,
+      pieceId: null,
+      pieceWidth: 0,
+      pieceHeight: 0,
+      isDragging: false,
+      originalParent: null,
+      // 新增：记录原始位置的前一个兄弟元素（关键）
+      originalPrevSibling: null
+    };
+
+    // 初始化游戏
+    function initGame() {
+      // 难度切换监听
+      elements.difficultySelect.addEventListener('change', function () {
+        if (!game.isPlaying) {
+          game.gridSize = parseInt(this.value);
+          game.pieceCount = game.gridSize * game.gridSize;
+          calculateDynamicSizes();
+          createPuzzleSlots();
+        }
+      });
+
+      calculateDynamicSizes();
+      createPuzzleSlots();
+      setupEventListeners();
+      window.addEventListener('resize', calculateDynamicSizes);
+      elements.hintImg.style.maxWidth = `${Math.min(window.innerWidth * 0.8, 500)}px`;
+    }
+
+    // 计算动态尺寸
+    function calculateDynamicSizes() {
+      game.totalBoardSize = Math.min(window.innerWidth * 0.8, 500);
+      game.boardPieceSize = game.totalBoardSize / game.gridSize;
+      game.pieceSize = game.boardPieceSize * 0.9;
+
+      elements.puzzleBoard.style.width = `${game.totalBoardSize}px`;
+      elements.puzzleBoard.style.height = `${game.totalBoardSize}px`;
+      elements.puzzleBoard.style.gridTemplateColumns = `repeat(${game.gridSize}, 1fr)`;
+      elements.puzzleBoard.style.gridTemplateRows = `repeat(${game.gridSize}, 1fr)`;
+      elements.hintImg.style.maxWidth = `${game.totalBoardSize}px`;
+    }
+
+    // 创建拼图槽位并记录坐标
+    function createPuzzleSlots() {
+      elements.puzzleBoard.innerHTML = '';
+      slotPositions = [];
+
+      for (let i = 0; i < game.pieceCount; i++) {
+        const slot = document.createElement('div');
+        // 移除 border 样式，删除分割线
+        slot.className = 'puzzle-slot bg-white relative w-full h-full';
+        slot.dataset.index = i;
+
+        // 绑定槽位通用事件
+        slot.addEventListener('dragover', handleSlotDragOver);
+        slot.addEventListener('dragleave', handleSlotDragLeave);
+        slot.addEventListener('drop', handleSlotDrop);
+        slot.addEventListener('touchstart', (e) => e.preventDefault());
+        slot.addEventListener('touchmove', (e) => e.preventDefault());
+        slot.addEventListener('touchend', (e) => e.preventDefault());
+
+        elements.puzzleBoard.appendChild(slot);
+      }
+
+      // 记录每个槽位的精准坐标
+      setTimeout(() => {
+        document.querySelectorAll('.puzzle-slot').forEach((slot, index) => {
+          const rect = slot.getBoundingClientRect();
+          slotPositions[index] = {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            centerX: (rect.left + rect.right) / 2,
+            centerY: (rect.top + rect.bottom) / 2,
+            element: slot,
+            index: index
+          };
+        });
+      }, 0);
+    }
+
+    // 创建拼图块
+    function createPuzzlePieces() {
+      calculateDynamicSizes();
+      elements.piecesContainer.innerHTML = '';
+      puzzlePieces = [];
+
+      // 生成拼图块数据
+      for (let i = 0; i < game.pieceCount; i++) {
+        const row = Math.floor(i / game.gridSize);
+        const col = i % game.gridSize;
+
+        const pieceTotalSize = game.pieceSize * game.gridSize;
+        const boardTotalSize = game.boardPieceSize * game.gridSize;
+        const bgX = -col * game.pieceSize;
+        const bgY = -row * game.pieceSize;
+        const boardBgX = -col * game.boardPieceSize;
+        const boardBgY = -row * game.boardPieceSize;
+
+        puzzlePieces.push({
+          id: i,
+          correctPosition: i,
+          row,
+          col,
+          bgX,
+          bgY,
+          boardBgX,
+          boardBgY,
+          pieceTotalSize,
+          boardTotalSize
+        });
+      }
+
+      // 打乱拼图块
+      shuffleArray(puzzlePieces);
+
+      // 创建拼图块DOM并绑定事件
+      puzzlePieces.forEach(piece => {
+        const pieceElement = document.createElement('div');
+        // 给拼图块添加flex-shrink-0，禁止收缩，保留自身宽度
+        pieceElement.className = 'puzzle-piece cursor-grab shadow-piece bg-[url("https://gips1.baidu.com/it/u=2178022794,1740207030&fm=3042&app=3042&f=JPEG&wm=1,baiduai3,0,0,13,9&wmo=5,5&w=1024&h=1024")] bg-no-repeat overflow-hidden touch-none transform-gpu flex-shrink-0';
+        pieceElement.dataset.id = piece.id;
+        pieceElement.dataset.correctPos = piece.correctPosition;
+
+        pieceElement.style.width = `${game.pieceSize}px`;
+        pieceElement.style.height = `${game.pieceSize}px`;
+        pieceElement.style.backgroundSize = `${piece.pieceTotalSize}px ${piece.pieceTotalSize}px`;
+        pieceElement.style.backgroundPosition = `${piece.bgX}px ${piece.bgY}px`;
+        pieceElement.draggable = true;
+
+        // 绑定PC端拖拽事件
+        pieceElement.addEventListener('dragstart', handlePieceDragStart);
+
+        // 绑定移动端触摸事件
+        pieceElement.addEventListener('touchstart', handlePieceTouchStart, { passive: false });
+        pieceElement.addEventListener('touchmove', handlePieceTouchMove, { passive: false });
+        pieceElement.addEventListener('touchend', handlePieceTouchEnd);
+        pieceElement.addEventListener('touchcancel', handlePieceTouchEnd);
+
+        elements.piecesContainer.appendChild(pieceElement);
+      });
+
+      elements.hintBtn.disabled = false;
+      startGame();
+    }
+
+    // 开始游戏
+    function startGame() {
+      game.isPlaying = true;
+      game.startTime = Date.now();
+      game.correctPieces = 0;
+
+      if (game.timerInterval) clearInterval(game.timerInterval);
+      game.timerInterval = setInterval(updateTimer, 100);
+
+      elements.startBtn.classList.add('hidden');
+      elements.startBtn.classList.remove('inline-flex');
+      elements.resetBtn.classList.remove('hidden');
+      elements.resetBtn.classList.add('inline-flex');
+      elements.difficultySelect.disabled = true;
+    }
+
+    // 更新计时器
+    function updateTimer() {
+      const elapsedTime = Math.floor((Date.now() - game.startTime) / 1000);
+      const minutes = Math.floor(elapsedTime / 60).toString().padStart(2, '0');
+      const seconds = (elapsedTime % 60).toString().padStart(2, '0');
+      const ms = Math.floor((Date.now() - game.startTime) % 1000 / 100);
+      elements.timer.textContent = `${minutes}:${seconds}.${ms}`;
+    }
+
+    // 停止计时器
+    function stopTimer() {
+      if (game.timerInterval) {
+        clearInterval(game.timerInterval);
+        game.timerInterval = null;
+      }
+    }
+
+    // ---------------- 核心：统一的拖拽逻辑 ----------------
+    /**
+     * 初始化拖拽状态（PC/移动端通用）
+     */
+    function initDragState(pieceElement, x, y) {
+      if (!game.isPlaying) return;
+
+      dragState = {
+        piece: pieceElement,
+        pieceId: pieceElement.dataset.id,
+        pieceWidth: pieceElement.offsetWidth,
+        pieceHeight: pieceElement.offsetHeight,
+        isDragging: true,
+        originalParent: pieceElement.parentElement,
+        // 关键：记录拖拽前的前一个兄弟元素（用于精准放回）
+        originalPrevSibling: pieceElement.previousSibling
+      };
+
+      // 设置拖拽样式
+      pieceElement.style.opacity = '0.9';
+      pieceElement.style.zIndex = '1000';
+
+      // 移动端fixed定位
+      if (isMobile()) {
+        pieceElement.style.position = 'fixed';
+        pieceElement.style.left = `${x - dragState.pieceWidth / 2}px`;
+        pieceElement.style.top = `${y - dragState.pieceHeight / 2}px`;
+        pieceElement.style.width = `${dragState.pieceWidth}px`;
+        pieceElement.style.height = `${dragState.pieceHeight}px`;
+        pieceElement.style.margin = '0';
+      }
+    }
+
+    /**
+     * 更新拖拽位置（PC/移动端通用）
+     */
+    function updateDragPosition(x, y) {
+      if (!dragState.isDragging || !dragState.piece) return;
+
+      // 更新拼图块位置
+      if (isMobile()) {
+        dragState.piece.style.left = `${x - dragState.pieceWidth / 2}px`;
+        dragState.piece.style.top = `${y - dragState.pieceHeight / 2}px`;
+      }
+
+      // 清除所有槽位高亮
+      document.querySelectorAll('.puzzle-slot').forEach(s => s.classList.remove('bg-[rgba(67,97,238,0.08)]', 'border-[rgba(67,97,238,0.2)]'));
+
+      // 查找目标槽位
+      const targetSlot = findTargetSlot(x, y);
+      if (targetSlot) {
+        targetSlot.element.classList.add('bg-[rgba(67,97,238,0.08)]');
+      }
+    }
+
+    /**
+     * 结束拖拽（PC/移动端通用）
+     */
+    function finishDrag(x, y) {
+      if (!dragState.isDragging || !dragState.piece) return;
+
+      // 重置拖拽样式
+      resetDragStyle();
+
+      // 查找目标槽位
+      const targetSlot = findTargetSlot(x, y);
+
+      // 无目标槽位时放回原始容器
+      if (!targetSlot) {
+        returnToOriginalContainer();
+        dragState = resetDragState();
+        return;
+      }
+
+      // 获取拼图块数据
+      const piece = puzzlePieces.find(p => p.id == dragState.pieceId);
+      if (!piece) {
+        returnToOriginalContainer();
+        dragState = resetDragState();
+        return;
+      }
+
+      // 已在目标槽位中则直接返回
+      if (dragState.piece.parentElement === targetSlot.element) {
+        dragState = resetDragState();
+        return;
+      }
+
+      // 核心判定逻辑
+      if (piece.correctPosition === targetSlot.index) {
+        placePieceCorrectly(piece, dragState.piece, targetSlot.element);
+      } else {
+        // 错误放置时：精准放回原位（而非列表最后）
+        returnToOriginalContainer();
+        dragState.piece.classList.add('shake');
+        setTimeout(() => dragState.piece.classList.remove('shake'), 100);
+      }
+
+      dragState = resetDragState();
+    }
+
+    /**
+     * 将拼图块放回原始位置（核心修改函数）
+     */
+    function returnToOriginalContainer() {
+      if (dragState.piece && dragState.originalParent) {
+        try {
+          // 关键修改：使用insertBefore插回原位置，而非appendChild
+          if (dragState.originalPrevSibling) {
+            // 如果有前一个兄弟元素，插在它后面
+            dragState.originalParent.insertBefore(dragState.piece, dragState.originalPrevSibling.nextSibling);
+          } else {
+            // 如果是第一个元素，插在最前面
+            dragState.originalParent.insertBefore(dragState.piece, dragState.originalParent.firstChild);
+          }
+          // 重置样式
+          dragState.piece.style.width = `${game.pieceSize}px`;
+          dragState.piece.style.height = `${game.pieceSize}px`;
+          dragState.piece.style.position = '';
+          dragState.piece.style.left = '';
+          dragState.piece.style.top = '';
+          dragState.piece.style.margin = '';
+        } catch (e) {
+          // 异常兜底：仍插回原容器的原位置（而非最后）
+          elements.piecesContainer.insertBefore(dragState.piece, dragState.originalPrevSibling ? dragState.originalPrevSibling.nextSibling : elements.piecesContainer.firstChild);
+        }
+      }
+    }
+
+    /**
+     * 查找目标槽位
+     */
+    function findTargetSlot(x, y) {
+      let targetSlot = null;
+      let minDistance = Infinity;
+
+      slotPositions.forEach(slot => {
+        const distance = Math.sqrt(
+          Math.pow(x - slot.centerX, 2) +
+          Math.pow(y - slot.centerY, 2)
+        );
+
+        if (distance < 50 && distance < minDistance) {
+          minDistance = distance;
+          targetSlot = slot;
+        }
+      });
+
+      return targetSlot;
+    }
+
+    /**
+     * 重置拖拽样式
+     */
+    function resetDragStyle() {
+      if (dragState.piece) {
+        dragState.piece.style.opacity = '1';
+        dragState.piece.style.zIndex = '1';
+        dragState.piece.style.position = '';
+        dragState.piece.style.left = '';
+        dragState.piece.style.top = '';
+        dragState.piece.style.width = '';
+        dragState.piece.style.height = '';
+        dragState.piece.style.margin = '';
+      }
+    }
+
+    /**
+     * 重置拖拽状态
+     */
+    function resetDragState() {
+      return {
+        piece: null,
+        pieceId: null,
+        pieceWidth: 0,
+        pieceHeight: 0,
+        isDragging: false,
+        originalParent: null,
+        originalPrevSibling: null
+      };
+    }
+
+    /**
+     * 正确放置拼图块
+     */
+    function placePieceCorrectly(piece, pieceElement, slot) {
+      // 重置样式
+      resetDragStyle();
+
+      // 移除所有事件
+      pieceElement.removeEventListener('dragstart', handlePieceDragStart);
+      pieceElement.removeEventListener('touchstart', handlePieceTouchStart);
+      pieceElement.removeEventListener('touchmove', handlePieceTouchMove);
+      pieceElement.removeEventListener('touchend', handlePieceTouchEnd);
+      pieceElement.draggable = false;
+
+      // 设置正确样式
+      pieceElement.classList.add('correct', 'cursor-default', 'transform-none', 'shadow-none', 'border-none');
+      pieceElement.style.width = '100%';
+      pieceElement.style.height = '100%';
+      pieceElement.style.backgroundSize = `${piece.boardTotalSize}px ${piece.boardTotalSize}px`;
+      pieceElement.style.backgroundPosition = `${piece.boardBgX}px ${piece.boardBgY}px`;
+
+      // 放置到槽位
+      slot.innerHTML = '';
+      slot.appendChild(pieceElement);
+      slot.classList.add('correct', 'relative');
+      slot.innerHTML += '<span class="absolute top-1 right-1 text-xs text-success font-bold">✓</span>';
+
+      // 移除槽位事件
+      slot.removeEventListener('dragover', handleSlotDragOver);
+      slot.removeEventListener('dragleave', handleSlotDragLeave);
+      slot.removeEventListener('drop', handleSlotDrop);
+
+      game.correctPieces++;
+
+      // 游戏完成判定
+      if (game.correctPieces === game.pieceCount) {
+        gameComplete();
+      }
+    }
+
+    // ---------------- 事件入口 ----------------
+    // PC端拼图块拖拽开始
+    function handlePieceDragStart(e) {
+      initDragState(e.target, e.clientX, e.clientY);
+      e.dataTransfer.setData('text/plain', dragState.pieceId);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setDragImage(e.target, e.target.offsetWidth / 2, e.target.offsetHeight / 2);
+    }
+
+    // PC端槽位拖拽中
+    function handleSlotDragOver(e) {
+      if (!game.isPlaying) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      e.currentTarget.classList.add('bg-[rgba(67,97,238,0.08)]');
+    }
+
+    // PC端槽位拖拽离开
+    function handleSlotDragLeave(e) {
+      e.currentTarget.classList.remove('bg-[rgba(67,97,238,0.08)]');
+    }
+
+    // PC端槽位放置
+    function handleSlotDrop(e) {
+      if (!game.isPlaying) return;
+      e.preventDefault();
+      e.currentTarget.classList.remove('bg-[rgba(67,97,238,0.08)]');
+      finishDrag(e.clientX, e.clientY);
+    }
+
+    // 移动端触摸开始
+    function handlePieceTouchStart(e) {
+      const touch = e.touches[0];
+      e.preventDefault();
+      initDragState(e.currentTarget, touch.clientX, touch.clientY);
+    }
+
+    // 移动端触摸移动
+    function handlePieceTouchMove(e) {
+      const touch = e.touches[0];
+      e.preventDefault();
+      updateDragPosition(touch.clientX, touch.clientY);
+    }
+
+    // 移动端触摸结束
+    function handlePieceTouchEnd(e) {
+      const touch = e.changedTouches ? e.changedTouches[0] : null;
+      if (!touch) {
+        resetDragStyle();
+        returnToOriginalContainer();
+        dragState = resetDragState();
+        return;
+      }
+      finishDrag(touch.clientX, touch.clientY);
+    }
+
+    // ---------------- 辅助函数 ----------------
+    // 判断是否为移动端
+    function isMobile() {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+
+    // 打乱数组
+    function shuffleArray(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    // 显示/关闭提示
+    function showHint() {
+      if (!game.isPlaying) return;
+      elements.hintOverlay.classList.remove('hidden');
+      elements.hintOverlay.classList.add('flex');
+    }
+
+    function closeHint() {
+      elements.hintOverlay.classList.add('hidden');
+      elements.hintOverlay.classList.remove('flex');
+    }
+
+    // 游戏完成
+    function gameComplete() {
+      game.isPlaying = false;
+      stopTimer();
+
+      elements.completionTime.textContent = elements.timer.textContent;
+      elements.completionModal.classList.remove('hidden');
+      elements.completionModal.classList.add('flex');
+      elements.difficultySelect.disabled = false;
+    }
+
+    // 重置游戏
+    function resetGame() {
+      stopTimer();
+      game.isPlaying = false;
+      elements.timer.textContent = '00:00.0';
+
+      elements.puzzleBoard.innerHTML = '';
+      elements.piecesContainer.innerHTML = '';
+
+      calculateDynamicSizes();
+      createPuzzleSlots();
+
+      elements.startBtn.classList.remove('hidden');
+      elements.startBtn.classList.add('inline-flex');
+      elements.resetBtn.classList.add('hidden');
+      elements.resetBtn.classList.remove('inline-flex');
+      elements.completionModal.classList.add('hidden');
+      elements.completionModal.classList.remove('flex');
+      elements.difficultySelect.disabled = false;
+    }
+
+    // 设置事件监听器
+    function setupEventListeners() {
+      // 游戏控制
+      elements.startBtn.addEventListener('click', createPuzzlePieces);
+      elements.resetBtn.addEventListener('click', resetGame);
+      elements.playAgainBtn.addEventListener('click', () => {
+        resetGame();
+        setTimeout(createPuzzlePieces, 50);
+      });
+
+      // 提示功能
+      elements.hintBtn.addEventListener('click', showHint);
+      elements.hintCloseBtn.addEventListener('click', closeHint);
+      elements.hintOverlay.addEventListener('click', function (e) {
+        if (e.target === elements.hintOverlay) closeHint();
+      });
+
+      // 阻止页面滚动
+      document.addEventListener('touchmove', function (e) {
+        if (dragState.isDragging) e.preventDefault();
+      }, { passive: false });
+    }
+
+    // 初始化游戏
+    initGame();
+  </script>
+</body>
+
+</html>
