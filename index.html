@@ -33,33 +33,33 @@
   </script>
   <style type="text/tailwindcss">
     @layer utilities {
-            .content-auto {
-                content-visibility: auto;
-            }
-            .timer-font {
-                font-family: 'Consolas', monospace;
-            }
-            .shake {
-                animation: shake 0.1s linear;
-            }
-            .modal-pop {
-                animation: modalPop 0.2s linear;
-            }
-            /* 新增：禁止flex子元素收缩 */
-            .flex-shrink-0 {
-                flex-shrink: 0;
-            }
-            @keyframes shake {
-                0%, 100% { transform: translate3d(0, 0, 0); }
-                25% { transform: translate3d(-2px, 0, 0); }
-                75% { transform: translate3d(2px, 0, 0); }
-            }
-            @keyframes modalPop {
-                from { opacity: 0; transform: scale(0.95); }
-                to { opacity: 1; transform: scale(1); }
-            }
-        }
-    </style>
+      .content-auto {
+        content-visibility: auto;
+      }
+      .timer-font {
+        font-family: 'Consolas', monospace;
+      }
+      .shake {
+        animation: shake 0.1s linear;
+      }
+      .modal-pop {
+        animation: modalPop 0.2s linear;
+      }
+      /* 新增：禁止flex子元素收缩 */
+      .flex-shrink-0 {
+        flex-shrink: 0;
+      }
+      @keyframes shake {
+        0%, 100% { transform: translate3d(0, 0, 0); }
+        25% { transform: translate3d(-2px, 0, 0); }
+        75% { transform: translate3d(2px, 0, 0); }
+      }
+      @keyframes modalPop {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+      }
+    }
+  </style>
 </head>
 
 <body class="bg-gradient-to-br from-[#e8f4f8] to-[#f0f8fb] min-h-screen text-dark touch-none">
@@ -107,7 +107,7 @@
       <h3 class="text-lg font-medium mb-2">拼图参考</h3>
       <p class="text-gray mb-4">这是完整的图片参考！</p>
       <img
-        src="https://gips1.baidu.com/it/u=2178022794,1740207030&fm=3042&app=3042&f=JPEG&wm=1,baiduai3,0,0,13,9&wmo=5,5&w=1024&h=1024"
+        src=""
         alt="拼图参考图" id="hintImg" class="hint-img max-w-full my-4 shadow-game">
       <button id="hintCloseBtn" class="hint-close mt-4 px-4 py-2 bg-primary text-white">知道了</button>
     </div>
@@ -123,9 +123,16 @@
         用时: <span id="completionTime">00:00.0</span></div>
       <button id="playAgainBtn" class="start-btn px-4 py-2 bg-primary text-white">再玩一次</button>
     </div>
-  </div>
 
   <script>
+    const imgList = [
+      'https://aisearch.cdn.bcebos.com/pic_create/2026-01-23/09/8cb8175d04839461.jpg',
+      'https://aisearch.cdn.bcebos.com/pic_create/2026-01-23/09/4b76d2d9a38d63b6.jpg',
+      'https://aisearch.cdn.bcebos.com/pic_create/2026-01-23/09/8572d16941128a53.jpg',
+      'https://aisearch.cdn.bcebos.com/pic_create/2026-01-23/09/b79a0215578e4748.jpg',
+      'https://aisearch.cdn.bcebos.com/pic_create/2026-01-23/09/e623e19b00e0ac1e.jpg',
+      'https://aisearch.cdn.bcebos.com/pic_create/2026-01-23/09/4b8a7f3f21c792fe.jpg'
+    ];
     // 游戏核心配置
     const game = {
       gridSize: 4,
@@ -136,7 +143,8 @@
       correctPieces: 0,
       totalBoardSize: 0,
       boardPieceSize: 0,
-      pieceSize: 0
+      pieceSize: 0,
+      currentImageUrl: '' // 新增：存储当前选中的随机图片URL
     };
 
     // DOM元素缓存
@@ -242,8 +250,19 @@
       }, 0);
     }
 
+    // 随机选择一张图片（新增工具函数）
+    function getRandomImageUrl() {
+      const randomIndex = Math.floor(Math.random() * imgList.length);
+      return imgList[randomIndex];
+    }
+
     // 创建拼图块
     function createPuzzlePieces() {
+      // 1. 随机选择图片并赋值给game.currentImageUrl
+      game.currentImageUrl = getRandomImageUrl();
+      // 2. 设置提示图为当前随机图片
+      elements.hintImg.src = game.currentImageUrl;
+
       calculateDynamicSizes();
       elements.piecesContainer.innerHTML = '';
       puzzlePieces = [];
@@ -280,13 +299,15 @@
       // 创建拼图块DOM并绑定事件
       puzzlePieces.forEach(piece => {
         const pieceElement = document.createElement('div');
-        // 给拼图块添加flex-shrink-0，禁止收缩，保留自身宽度
-        pieceElement.className = 'puzzle-piece cursor-grab shadow-piece bg-[url("https://gips1.baidu.com/it/u=2178022794,1740207030&fm=3042&app=3042&f=JPEG&wm=1,baiduai3,0,0,13,9&wmo=5,5&w=1024&h=1024")] bg-no-repeat overflow-hidden touch-none transform-gpu flex-shrink-0';
+        // 移除固定背景图的Tailwind类，改为通过style动态设置
+        pieceElement.className = 'puzzle-piece cursor-grab shadow-piece bg-no-repeat overflow-hidden touch-none transform-gpu flex-shrink-0';
         pieceElement.dataset.id = piece.id;
         pieceElement.dataset.correctPos = piece.correctPosition;
 
+        // 动态设置拼图块的背景图和样式（核心修改）
         pieceElement.style.width = `${game.pieceSize}px`;
         pieceElement.style.height = `${game.pieceSize}px`;
+        pieceElement.style.backgroundImage = `url(${game.currentImageUrl})`; // 使用随机图片
         pieceElement.style.backgroundSize = `${piece.pieceTotalSize}px ${piece.pieceTotalSize}px`;
         pieceElement.style.backgroundPosition = `${piece.bgX}px ${piece.bgY}px`;
         pieceElement.draggable = true;
@@ -542,6 +563,8 @@
       pieceElement.style.height = '100%';
       pieceElement.style.backgroundSize = `${piece.boardTotalSize}px ${piece.boardTotalSize}px`;
       pieceElement.style.backgroundPosition = `${piece.boardBgX}px ${piece.boardBgY}px`;
+      // 确保正确放置时背景图还是当前随机图片
+      pieceElement.style.backgroundImage = `url(${game.currentImageUrl})`;
 
       // 放置到槽位
       slot.innerHTML = '';
